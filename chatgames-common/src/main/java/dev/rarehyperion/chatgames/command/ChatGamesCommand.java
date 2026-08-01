@@ -1,0 +1,129 @@
+package dev.rarehyperion.chatgames.command;
+
+import dev.rarehyperion.chatgames.ChatGamesCore;
+import dev.rarehyperion.chatgames.config.ConfigManager;
+import dev.rarehyperion.chatgames.game.Game;
+import dev.rarehyperion.chatgames.game.GameConfig;
+import dev.rarehyperion.chatgames.game.types.ReactionGame;
+import dev.rarehyperion.chatgames.platform.PlatformSender;
+import dev.rarehyperion.chatgames.util.MessageUtil;
+import java.util.Arrays;
+import java.util.Optional;
+
+public class ChatGamesCommand {
+  private static final String NO_PERMISSION_DEFAULT = "<red>You don't have permission to use this command.</red>";
+  private static final String USAGE_DEFAULT = "<red>Incorrect usage. Usage: %s</red>";
+  protected final ChatGamesCore plugin;
+  protected final ConfigManager configManager;
+
+  public ChatGamesCommand(ChatGamesCore plugin) {
+    this.plugin = plugin;
+    this.configManager = plugin.configManager();
+  }
+
+  public boolean handleCommand(PlatformSender sender, String[] args) {
+    if (args.length == 0) {
+      this.sendHelp(sender);
+      return true;
+    }
+    switch (args[0].toLowerCase()) {
+      case "reload": this.handleReload(sender); break;
+      case "start": this.handleStart(sender, args); break;
+      case "stop": this.handleStop(sender); break;
+      case "list": this.handleList(sender); break;
+      case "info": this.handleInfo(sender); break;
+      case "toggle": this.handleToggle(sender); break;
+      case "answer": this.handleAnswer(sender, args); break;
+      case "help": this.sendHelp(sender); break;
+      default: sender.sendMessage(MessageUtil.parse("<red>Unknown command. Type /chatgames for help.</red>"));
+    }
+    return true;
+  }
+
+  private void handleReload(PlatformSender sender) {
+    if (!sender.hasPermission("chatgames.reload")) {
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("permission", NO_PERMISSION_DEFAULT)));
+    } else {
+      this.plugin.reload();
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("reload", "<green>Successfully reloaded ChatGames!</green>")));
+    }
+  }
+
+  private void handleStart(PlatformSender sender, String[] args) {
+    if (!sender.hasPermission("chatgames.reload")) {
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("permission", NO_PERMISSION_DEFAULT)));
+    } else if (args.length < 2) {
+      sender.sendMessage(MessageUtil.parse(String.format(USAGE_DEFAULT, "/chatgames start <game>")));
+    } else {
+      String gameName = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+      Optional<GameConfig> optionalConfig = this.plugin.gameRegistry().getConfigByName(gameName);
+      if (optionalConfig.isPresent()) {
+        this.plugin.gameManager().startGame(optionalConfig.get());
+      } else {
+        sender.sendMessage(MessageUtil.parse("<red>Unknown game: " + gameName + "</red>"));
+      }
+    }
+  }
+
+  private void handleStop(PlatformSender sender) {
+    if (!sender.hasPermission("chatgames.stop")) {
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("permission", NO_PERMISSION_DEFAULT)));
+    } else {
+      this.plugin.gameManager().stopGame();
+      sender.sendMessage(MessageUtil.parse("<green>Game stopped</green>"));
+    }
+  }
+
+  private void handleList(PlatformSender sender) {
+    if (!sender.hasPermission("chatgames.list")) {
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("permission", NO_PERMISSION_DEFAULT)));
+    } else {
+      sender.sendMessage(MessageUtil.parse("<aqua><bold>Available Games:</bold></aqua>"));
+      for (GameConfig config : this.plugin.gameRegistry().getAllConfigs())
+        sender.sendMessage(MessageUtil.parse("<gray>-</gray> <green>" + config.getDisplayName() + "</green>"));
+    }
+  }
+
+  private void handleInfo(PlatformSender sender) {
+    String authors = String.join(", and ", this.plugin.platform().pluginMeta().getAuthors());
+    sender.sendMessage(MessageUtil.parse(String.format(
+      "<gold>ChatGames <white>\u2022</white> <yellow>%s</yellow></gold>\n<green>A simple plugin that adds chat-based games by <aqua>%s</aqua></green>",
+      this.plugin.platform().pluginMeta().getVersion(), authors
+    )));
+  }
+
+  private void handleToggle(PlatformSender sender) {
+    if (!sender.hasPermission("chatgames.toggle")) {
+      sender.sendMessage(MessageUtil.parse(this.configManager.getMessage("permission", NO_PERMISSION_DEFAULT)));
+    } else {
+      boolean current = this.plugin.platform().getConfigValue("automatic-games", Boolean.class, true);
+      boolean newValue = !current;
+      this.plugin.platform().setConfigValue("automatic-games", newValue);
+      this.plugin.platform().saveConfig();
+      this.plugin.configManager().load();
+      if (newValue) {
+        this.plugin.gameManager().startScheduler();
+        sender.sendMessage(MessageUtil.parse("<green>Automatic games enabled!</green>"));
+      } else {
+        this.plugin.gameManager().shutdown();
+        sender.sendMessage(MessageUtil.parse("<red>Automatic games disabled!</red>"));
+      }
+    }
+  }
+
+  private void handleAnswer(PlatformSender sender, String[] args) {
+    Game game = this.plugin.gameManager().getActiveGame();
+    if (!sender.isConsole() && game instanceof ReactionGame && args.length >= 2)
+      this.plugin.gameManager().processAnswer(sender.player(), args[1]);
+  }
+
+  private void sendHelp(PlatformSender sender) {
+    sender.sendMessage(MessageUtil.parse("<gray><bold>ChatGames Commands:</bold></gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames reload</yellow> <gray>- Reloads the plugin</gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames start <game></yellow> <gray>- Starts the specified game</gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames stop</yellow> <gray>- Stop the current game</gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames list</yellow> <gray>- Lists all available games</gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames toggle</yellow> <gray>- Toggles automatic games</gray>"));
+    sender.sendMessage(MessageUtil.parse("<yellow>/chatgames info</yellow> <gray>- Displays plugin information</gray>"));
+  }
+}
